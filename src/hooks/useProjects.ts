@@ -60,16 +60,18 @@ export function useProjects() {
 
   const createProject = async (projectData: Partial<Project>) => {
     try {
-      // Get the fresh user ID from the session to ensure it matches auth.uid() in RLS
+      // Get fresh user to ensure we have the correct ID for RLS
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
-        throw new Error('Not authenticated. Please log in to create a project.');
+        throw new Error('You must be logged in to create a project.');
       }
 
-      // Convert empty strings to null for optional database fields
+      // Convert empty strings to null and ensure only schema cables are sent
       const formattedData = {
-        ...projectData,
+        name: projectData.name,
+        description: projectData.description || null,
+        status: projectData.status || 'active',
         owner_id: user.id,
         start_date: projectData.start_date || null,
         end_date: projectData.end_date || null,
