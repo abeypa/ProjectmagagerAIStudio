@@ -22,6 +22,10 @@ DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile" ON public.profiles
     FOR UPDATE USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can insert their own profile" ON public.profiles;
+CREATE POLICY "Users can insert their own profile" ON public.profiles
+    FOR INSERT WITH CHECK (auth.uid() = id);
+
 DROP POLICY IF EXISTS "System can insert profiles" ON public.profiles;
 CREATE POLICY "System can insert profiles" ON public.profiles
     FOR INSERT WITH CHECK (auth.uid() = id);
@@ -31,7 +35,7 @@ CREATE TABLE IF NOT EXISTS public.projects (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT,
-    owner_id UUID REFERENCES public.profiles(id),
+    owner_id UUID REFERENCES public.profiles(id) DEFAULT auth.uid(),
     status TEXT DEFAULT 'active' CHECK (status IN ('active', 'on_hold', 'completed', 'archived')),
     start_date DATE,
     end_date DATE,
@@ -45,7 +49,7 @@ ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users can create projects" ON public.projects;
 CREATE POLICY "Users can create projects" ON public.projects
-    FOR INSERT WITH CHECK (auth.uid() = owner_id);
+    FOR INSERT WITH CHECK (auth.uid() = owner_id OR owner_id IS NULL);
 
 DROP POLICY IF EXISTS "Users can view projects" ON public.projects;
 CREATE POLICY "Users can view projects" ON public.projects
