@@ -15,6 +15,7 @@ import {
 import { motion } from 'motion/react';
 import { StagePanel } from '../components/StagePanel';
 import { ActivityFeed } from '../components/ActivityFeed';
+import { ProjectMembers } from '../components/ProjectMembers';
 import { cn, formatDate } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import { Project } from '../types';
@@ -24,6 +25,7 @@ export default function ProjectDashboard() {
   const { stages, loading: stagesLoading } = useStages(projectId!);
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'activity' | 'members'>('activity');
 
   useEffect(() => {
     async function fetchProject() {
@@ -114,20 +116,66 @@ export default function ProjectDashboard() {
       </div>
 
       {/* Secondary Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold tracking-tight">Project Activity</h2>
-            <button className="text-sm font-bold uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-colors">View All</button>
-          </div>
-          <ActivityFeed projectId={projectId!} limit={10} />
+      <div className="space-y-6 pb-20">
+        <div className="flex items-center gap-8 border-b border-white/5">
+          <button 
+            onClick={() => setActiveTab('activity')}
+            className={cn(
+              "pb-4 text-xs font-black uppercase tracking-widest transition-all relative",
+              activeTab === 'activity' ? "text-indigo-400" : "text-zinc-500 hover:text-zinc-300"
+            )}
+          >
+            Mission Logs
+            {activeTab === 'activity' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500" />}
+          </button>
+          <button 
+            onClick={() => setActiveTab('members')}
+            className={cn(
+              "pb-4 text-xs font-black uppercase tracking-widest transition-all relative",
+              activeTab === 'members' ? "text-indigo-400" : "text-zinc-500 hover:text-zinc-300"
+            )}
+          >
+            Personnel
+            {activeTab === 'members' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500" />}
+          </button>
         </div>
-        
-        <div className="space-y-6">
-          <h2 className="text-xl font-bold tracking-tight">Project Team</h2>
-          <div className="glass-card p-6 space-y-4">
-             {/* We can add a member list here later */}
-             <p className="text-zinc-500 text-sm">Team member management coming soon.</p>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2">
+            {activeTab === 'activity' ? (
+              <ActivityFeed projectId={projectId!} limit={20} />
+            ) : (
+              <ProjectMembers projectId={projectId!} />
+            )}
+          </div>
+          
+          <div className="space-y-6">
+            <h2 className="text-xl font-bold tracking-tight">Mission Metrics</h2>
+            <div className="glass-card p-6 space-y-6">
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-zinc-500">
+                  <span>Total Progress</span>
+                  <span>{Math.round(stages.reduce((acc, s) => acc + (s.progress_pct || 0), 0) / stages.length)}%</span>
+                </div>
+                <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-indigo-500 transition-all duration-1000" 
+                    style={{ width: `${Math.round(stages.reduce((acc, s) => acc + (s.progress_pct || 0), 0) / (stages.length || 1))}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-3 bg-white/5 rounded-xl border border-white/10">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1">Blockers</p>
+                  <p className="text-xl font-bold text-rose-400">{stages.reduce((acc, s) => acc + (s.open_issue_count || 0), 0)}</p>
+                </div>
+                <div className="p-3 bg-white/5 rounded-xl border border-white/10">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1">Files</p>
+                  <p className="text-xl font-bold text-indigo-400">{stages.reduce((acc, s) => acc + (s.file_count || 0), 0)}</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

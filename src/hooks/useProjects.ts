@@ -44,7 +44,12 @@ export function useProjects() {
       const { data, error } = await query;
       if (error) throw error;
 
-      setProjects(data || []);
+      const flattenedProjects = (data || []).map((p: any) => ({
+        ...p,
+        members_count: p.members_count?.[0]?.count || 0
+      }));
+
+      setProjects(flattenedProjects);
     } catch (error: any) {
       console.error('Error fetching projects:', error);
       toast.error('Failed to load projects');
@@ -107,7 +112,9 @@ export function useProjects() {
       return project;
     } catch (error: any) {
       console.error('Error creating project:', error);
-      toast.error('Failed to create project');
+      const errorMessage = error.message || 'Failed to create project';
+      const errorDetails = error.details ? ` (${error.details})` : '';
+      toast.error(`${errorMessage}${errorDetails}`);
       throw error;
     }
   };
