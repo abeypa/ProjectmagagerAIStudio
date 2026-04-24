@@ -45,11 +45,7 @@ ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users can create projects" ON public.projects;
 CREATE POLICY "Users can create projects" ON public.projects
-    FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-
-DROP POLICY IF EXISTS "Users can insert their own profile" ON public.profiles;
-CREATE POLICY "Users can insert their own profile" ON public.profiles
-    FOR INSERT WITH CHECK (auth.uid() = id);
+    FOR INSERT WITH CHECK (auth.uid() = owner_id);
 
 DROP POLICY IF EXISTS "Users can view projects" ON public.projects;
 CREATE POLICY "Users can view projects" ON public.projects
@@ -62,6 +58,10 @@ CREATE POLICY "Users can view projects" ON public.projects
 DROP POLICY IF EXISTS "Owners can update projects" ON public.projects;
 CREATE POLICY "Owners can update projects" ON public.projects
     FOR UPDATE USING (owner_id = auth.uid());
+
+DROP POLICY IF EXISTS "Owners can delete projects" ON public.projects;
+CREATE POLICY "Owners can delete projects" ON public.projects
+    FOR DELETE USING (owner_id = auth.uid());
 
 -- 3. Project Members Table
 CREATE TABLE IF NOT EXISTS public.project_members (
@@ -77,11 +77,30 @@ ALTER TABLE public.project_members ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Insert members" ON public.project_members;
 CREATE POLICY "Insert members" ON public.project_members
-    FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+    FOR INSERT WITH CHECK (
+        EXISTS (SELECT 1 FROM public.projects WHERE id = project_id AND owner_id = auth.uid()) OR
+        user_id = auth.uid()
+    );
 
 DROP POLICY IF EXISTS "View members" ON public.project_members;
 CREATE POLICY "View members" ON public.project_members
-    FOR SELECT USING (auth.role() = 'authenticated');
+    FOR SELECT USING (
+        EXISTS (SELECT 1 FROM public.project_members WHERE project_id = project_members.project_id AND user_id = auth.uid()) OR
+        EXISTS (SELECT 1 FROM public.projects WHERE id = project_id AND owner_id = auth.uid())
+    );
+
+DROP POLICY IF EXISTS "Update members" ON public.project_members;
+CREATE POLICY "Update members" ON public.project_members
+    FOR UPDATE USING (
+        EXISTS (SELECT 1 FROM public.projects WHERE id = project_id AND owner_id = auth.uid())
+    );
+
+DROP POLICY IF EXISTS "Delete members" ON public.project_members;
+CREATE POLICY "Delete members" ON public.project_members
+    FOR DELETE USING (
+        EXISTS (SELECT 1 FROM public.projects WHERE id = project_id AND owner_id = auth.uid()) OR
+        user_id = auth.uid()
+    );
 
 -- 4. Stages Table
 CREATE TABLE IF NOT EXISTS public.stages (

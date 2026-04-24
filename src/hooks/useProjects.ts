@@ -60,13 +60,22 @@ export function useProjects() {
 
   const createProject = async (projectData: Partial<Project>) => {
     try {
+      if (!profile?.id) {
+        throw new Error('User profile not loaded. Please wait a moment and try again.');
+      }
+
+      // Convert empty strings to null for optional database fields
+      const formattedData = {
+        ...projectData,
+        owner_id: profile.id,
+        start_date: projectData.start_date || null,
+        end_date: projectData.end_date || null,
+      };
+
       // 1. Create Project
       const { data: project, error: pError } = await supabase
         .from('projects')
-        .insert([{
-          ...projectData,
-          owner_id: profile?.id
-        }])
+        .insert([formattedData])
         .select()
         .single();
 
