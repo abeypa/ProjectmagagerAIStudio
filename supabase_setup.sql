@@ -12,6 +12,36 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- HELPER FUNCTIONS (SECURITY DEFINER) to break RLS recursion
+CREATE OR REPLACE FUNCTION public.check_is_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1 FROM public.profiles
+        WHERE id = auth.uid() AND is_admin = true
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION public.check_project_access(p_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+    -- Check if owner
+    IF EXISTS (SELECT 1 FROM public.projects WHERE id = p_id AND owner_id = auth.uid()) THEN
+        RETURN TRUE;
+    END IF;
+    -- Check if member
+    IF EXISTS (SELECT 1 FROM public.project_members WHERE project_id = p_id AND user_id = auth.uid()) THEN
+        RETURN TRUE;
+    END IF;
+    -- Check if admin
+    IF public.check_is_admin() THEN
+        RETURN TRUE;
+    END IF;
+    RETURN FALSE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON public.profiles;
@@ -54,9 +84,7 @@ CREATE POLICY "Users can create projects" ON public.projects
 DROP POLICY IF EXISTS "Users can view projects" ON public.projects;
 CREATE POLICY "Users can view projects" ON public.projects
     FOR SELECT TO authenticated USING (
-        owner_id = auth.uid() OR 
-        id IN (SELECT project_id FROM public.project_members WHERE user_id = auth.uid()) OR
-        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
+        public.check_project_access(id)
     );
 
 DROP POLICY IF EXISTS "Owners can update projects" ON public.projects;
@@ -79,18 +107,16 @@ CREATE TABLE IF NOT EXISTS public.project_members (
 
 ALTER TABLE public.project_members ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Insert members" ON public.project_members;
-CREATE POLICY "Insert members" ON public.project_members
-    FOR INSERT WITH CHECK (
-        EXISTS (SELECT 1 FROM public.projects WHERE id = project_id AND owner_id = auth.uid()) OR
-        user_id = auth.uid()
-    );
-
 DROP POLICY IF EXISTS "View members" ON public.project_members;
 CREATE POLICY "View members" ON public.project_members
     FOR SELECT TO authenticated USING (
-        project_id IN (SELECT id FROM public.projects WHERE owner_id = auth.uid()) OR
-        user_id = auth.uid()
+        public.check_project_access(project_id)
+    );
+
+DROP POLICY IF EXISTS "Insert members" ON public.project_members;
+CREATE POLICY "Insert members" ON public.project_members
+    FOR INSERT WITH CHECK (
+        public.check_project_access(project_id)
     );
 
 DROP POLICY IF EXISTS "Update members" ON public.project_members;
@@ -126,7 +152,7 @@ CREATE POLICY "Insert stages" ON public.stages
 DROP POLICY IF EXISTS "View stages" ON public.stages;
 CREATE POLICY "View stages" ON public.stages
     FOR SELECT USING (
-        EXISTS (SELECT 1 FROM public.project_members WHERE project_id = stages.project_id AND user_id = auth.uid())
+        public.check_project_access(project_id)
     );
 
 -- 5. Topics Table
@@ -147,26 +173,38 @@ ALTER TABLE public.topics ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "All on topics" ON public.topics;
 CREATE POLICY "All on topics" ON public.topics
     FOR ALL USING (
-        EXISTS (
-            SELECT 1 FROM public.stages s
-            JOIN public.project_members m ON m.project_id = s.project_id
-            WHERE s.id = topics.stage_id AND m.user_id = auth.uid()
-        )
+        public.check_project_access((SELECT project_id FROM public.stages WHERE id = topics.stage_id))
     );
 
 -- 6. Ideas, 7. Approvals, 8. Issues, 9. Stage Files
--- Repeat similar patterns for these tables to ensure members can access them
+-- Using helper to ensure members can access
 ALTER TABLE public.ideas ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Ideas access" ON public.ideas FOR ALL USING (true); -- Simplified for now, harden as needed
+DROP POLICY IF EXISTS "Ideas access" ON public.ideas;
+CREATE POLICY "Ideas access" ON public.ideas 
+    FOR ALL USING (
+        public.check_project_access((SELECT project_id FROM public.stages s JOIN public.topics t ON t.stage_id = s.id WHERE t.id = ideas.topic_id))
+    );
 
 ALTER TABLE public.approvals ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Approvals access" ON public.approvals FOR ALL USING (true);
+DROP POLICY IF EXISTS "Approvals access" ON public.approvals;
+CREATE POLICY "Approvals access" ON public.approvals 
+    FOR ALL USING (
+        public.check_project_access((SELECT project_id FROM public.stages s JOIN public.topics t ON t.stage_id = s.id WHERE t.id = approvals.topic_id))
+    );
 
 ALTER TABLE public.issues ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Issues access" ON public.issues FOR ALL USING (true);
+DROP POLICY IF EXISTS "Issues access" ON public.issues;
+CREATE POLICY "Issues access" ON public.issues 
+    FOR ALL USING (
+        public.check_project_access((SELECT project_id FROM public.stages s JOIN public.topics t ON t.stage_id = s.id WHERE t.id = issues.topic_id))
+    );
 
 ALTER TABLE public.stage_files ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Files access" ON public.stage_files FOR ALL USING (true);
+DROP POLICY IF EXISTS "Files access" ON public.stage_files;
+CREATE POLICY "Files access" ON public.stage_files 
+    FOR ALL USING (
+        public.check_project_access(project_id)
+    );
 
 -- 10. Activity Log Table
 CREATE TABLE IF NOT EXISTS public.activity_log (
@@ -189,7 +227,7 @@ CREATE POLICY "Insert activity" ON public.activity_log
 DROP POLICY IF EXISTS "View activity" ON public.activity_log;
 CREATE POLICY "View activity" ON public.activity_log
     FOR SELECT USING (
-        EXISTS (SELECT 1 FROM public.project_members WHERE project_id = activity_log.project_id AND user_id = auth.uid())
+        public.check_project_access(project_id)
     );
 
 -- Enable Trigger for user creation (optional but recommended)
