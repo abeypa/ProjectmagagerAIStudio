@@ -49,13 +49,13 @@ ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users can create projects" ON public.projects;
 CREATE POLICY "Users can create projects" ON public.projects
-    FOR INSERT WITH CHECK (auth.uid() = owner_id OR owner_id IS NULL);
+    FOR INSERT TO authenticated WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Users can view projects" ON public.projects;
 CREATE POLICY "Users can view projects" ON public.projects
-    FOR SELECT USING (
+    FOR SELECT TO authenticated USING (
         owner_id = auth.uid() OR 
-        EXISTS (SELECT 1 FROM public.project_members WHERE project_id = projects.id AND user_id = auth.uid()) OR
+        id IN (SELECT project_id FROM public.project_members WHERE user_id = auth.uid()) OR
         EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
     );
 
@@ -88,9 +88,9 @@ CREATE POLICY "Insert members" ON public.project_members
 
 DROP POLICY IF EXISTS "View members" ON public.project_members;
 CREATE POLICY "View members" ON public.project_members
-    FOR SELECT USING (
-        EXISTS (SELECT 1 FROM public.project_members WHERE project_id = project_members.project_id AND user_id = auth.uid()) OR
-        EXISTS (SELECT 1 FROM public.projects WHERE id = project_id AND owner_id = auth.uid())
+    FOR SELECT TO authenticated USING (
+        project_id IN (SELECT id FROM public.projects WHERE owner_id = auth.uid()) OR
+        user_id = auth.uid()
     );
 
 DROP POLICY IF EXISTS "Update members" ON public.project_members;
